@@ -10,6 +10,9 @@
 
 #include <fcntl.h>
 #include <sys/stat.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <sys/un.h>
 #include <unistd.h>
 
 #include <openssl/bn.h>
@@ -41,18 +44,45 @@ using BIO_FILE_ptr = std::unique_ptr<BIO, decltype(&::BIO_free)>;
 string seed_random_number_gen()
 {
     const int SEED_SZ = 128;
-    std::uniform_int_distribution<int> d(0, 9);
-    stringstream ss;
+    int rc;
 
-    std::random_device rd1; // uses RDRND or /dev/urandom
+    //std::uniform_int_distribution<int> d(0, 9);
+    //stringstream ss;
 
-    for(int n = 0; n < SEED_SZ; ++n) {
-        ss << d(rd1);
+    //std::random_device rd1; // uses RDRND or /dev/urandom
+
+    // for(int n = 0; n < SEED_SZ; ++n) {
+    //     ss << d(rd1);
+    // }
+
+    char buf[SEED_SZ];
+    int fd = open("/dev/random", O_RDONLY);
+    if (fd == -1) {
+        throw std::runtime_error("Err opening /dev/random" FILE_LINE);
     }
+    int n = read(fd, buf, sizeof(buf)-1);
+    if (n == -1) {
+        throw std::runtime_error("Err reading /dev/random" FILE_LINE);
+    }
+    close(fd);
+    cout << "Seeding SSL RNG from /dev/random...\n";
+    RAND_add(buf, sizeof(buf), n);
 
+    buf[n] = '\0';
     cout << "Generated random seed:\n";
-    cout << ss.str() << '\n';
-    return ss.str();
+    cout << buf << '\n';
+    //string seed = ss.str();
+    //cout << seed << '\n';
+
+    // Seed the openssl RNG
+    //cout << "Seeding SSL RNG from /dev/urandom...\n";
+    //RAND_add(seed.c_str(), seed.length(), seed.length());
+
+    rc = RAND_status();
+    if (rc != 1)
+        throw std::runtime_error("Open SSL: " FILE_LINE);
+
+    return string(buf);
 }
 
 void generate_key_pair(string& seed)
@@ -72,12 +102,6 @@ void generate_key_pair(string& seed)
         throw std::runtime_error("Open SSL: " FILE_LINE);
 
 
-    // Seed the openssl RNG
-    cout << "Seeding RNG from /dev/urandom...\n";
-    RAND_add(seed.c_str(), seed.length(), seed.length());
-    rc = RAND_status();
-    if (rc != 1)
-        throw std::runtime_error("Open SSL: " FILE_LINE);
 
     // Generate key
     rc = RSA_generate_key_ex(rsa.get(), 2048, bn.get(), NULL);
@@ -108,23 +132,37 @@ void generate_key_pair(string& seed)
 int open_socket()
 {
     int fd;
-    const char* myfifo = FIFO_NAME;
+    int retval;
 
-    // create the FIFO (named pipe)
-    mkfifo(myfifo, 0666);
-
-    /* open, read, and display the message from the FIFO */
-    fd = open(myfifo, O_RDWR);
+    fd = socket(AF_UNIX, SOCK_STREAM, 0);
     if (fd == -1) {
         throw std::runtime_error("Could not open socket" FILE_LINE);
     }
 
+    unlink(SOCK_NAME);
+    sockaddr_un addr;
+    memset(&addr, 0, sizeof(addr));
+    addr.sun_family = AF_UNIX;
+    strncpy(addr.sun_path, SOCK_NAME, sizeof(addr.sun_path)-1);
+    retval = bind(fd, (struct sockaddr*)&addr, sizeof(addr));
+    if (retval == -1) {
+        perror(NULL);
+        throw std::runtime_error("bind() " FILE_LINE);
+    }
+
+    retval = listen(fd, 5);
+    if (retval == -1) {
+        throw std::runtime_error("listen() " FILE_LINE);
+    }
     return fd;
 }
 
 void close_socket(int fd)
 {
     close(fd);
+
+    /* remove the FIFO */
+    unlink(SOCK_NAME);
 }
 
 string read_socket(int fd)
@@ -177,10 +215,16 @@ int main(int argc, char* argv[])
             string seed = seed_random_number_gen();
             generate_key_pair(seed);
 
-            string voter = read_socket(fd);
+            int cli_fd = accept(fd, NULL, NULL);
+            if (cli_fd == -1) {
+                throw std::runtime_error("accept() " FILE_LINE);
+            }
+
+            string voter = read_socket(cli_fd);
             cout << "Handing out token (pubkey) for voter " << voter << '\n';
-            write_socket(fd);
+            write_socket(cli_fd);
             voters.insert(std::make_pair(voter, time(nullptr)));
+            close(cli_fd);
         }
     }
     catch (exception& ex) {

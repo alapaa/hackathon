@@ -6,6 +6,6 @@
 #define FILE_LINE __FILE__ ":" TOSTRING(__LINE__)
 
 const int MAX_BUF = 1024;
-const char* FIFO_NAME="/tmp/myfifo";
+const char* SOCK_NAME="/tmp/myfifo";
 
 #endif
