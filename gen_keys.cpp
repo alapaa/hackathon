@@ -3,6 +3,12 @@
 #include <string>
 #include <iostream>
 #include <sstream>
+#include <stdexcept>
+#include <cstdio> // only __FILE__ __LINE__ macros
+
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 #include <openssl/bn.h>
 #include <openssl/rsa.h>
@@ -12,12 +18,16 @@
 #include <openssl/x509.h>
 
 #include <cassert>
-#define ASSERT assert
+
+#include "utils.h"
 
 using std::unique_ptr;
 using std::string;
 using std::cout;
+using std::cerr;
 using std::stringstream;
+using std::exception;
+using std::runtime_error;
 
 using BN_ptr = std::unique_ptr<BIGNUM, decltype(&::BN_free)>;
 using RSA_ptr = std::unique_ptr<RSA, decltype(&::RSA_free)>;
@@ -54,40 +64,123 @@ void generate_key_pair(string& seed)
 
 
     rc = BN_set_word(bn.get(), RSA_F4);
-    ASSERT(rc == 1);
+    if (rc != 1)
+        throw std::runtime_error("Open SSL: " FILE_LINE);
+
 
     // Seed the openssl RNG
     cout << "Seeding RNG from /dev/urandom...\n";
     RAND_add(seed.c_str(), seed.length(), seed.length());
     rc = RAND_status();
-    ASSERT(rc == 1);
+    if (rc != 1)
+        throw std::runtime_error("Open SSL: " FILE_LINE);
 
     // Generate key
     rc = RSA_generate_key_ex(rsa.get(), 2048, bn.get(), NULL);
-    ASSERT(rc == 1);
+    if (rc != 1)
+        throw std::runtime_error("Open SSL: " FILE_LINE);
 
     // Convert RSA to PKEY
     EVP_KEY_ptr pkey(EVP_PKEY_new(), ::EVP_PKEY_free);
     rc = EVP_PKEY_set1_RSA(pkey.get(), rsa.get());
-    ASSERT(rc == 1);
+    if (rc != 1)
+        throw std::runtime_error("Open SSL: " FILE_LINE);
 
     //////////
 
     // Write public key in PKCS PEM
     rc = PEM_write_bio_RSAPublicKey(pem1.get(), rsa.get());
-    ASSERT(rc == 1);
+    if (rc != 1)
+        throw std::runtime_error("Open SSL: " FILE_LINE);
 
     // Write private key in PKCS PEM.
     rc = PEM_write_bio_PrivateKey(pem3.get(), pkey.get(), NULL, NULL, 0, NULL,
                                   NULL);
-    ASSERT(rc == 1);
+    if (rc != 1)
+        throw std::runtime_error("Open SSL: " FILE_LINE);
 
+}
+
+int open_socket()
+{
+    int fd;
+    char * myfifo = "/tmp/myfifo";
+    char buf[MAX_BUF];
+
+    /* open, read, and display the message from the FIFO */
+    fd = open(myfifo, O_RDWRITE);
+    if (fd == -1) {
+        throw std::runtime_error("Could not open socket" FILE_LINE);
+    }
+
+    return fd;
+}
+
+void close_socket(int fd)
+{
+    close(fd);
+}
+
+string read_socket(int fd)
+{
+    char buf[MAX_BUF];
+
+    fd = open(myfifo, O_RDONLY);
+    ssize_t num = read(fd, buf, MAX_BUF);
+    if (num == -1) {
+        throw std::runtime_error("read() " FILE_LINE)
+    }
+    printf("Received: %s\n", buf);
+
+    return string(buf);
+}
+
+void write_socket(int fd)
+{
+    ofstream pubkey_file;
+    pubkey_file.open("rsa-public-1.pem");
+
+    string pubkey;
+    if (pubkey_file.is_open())
+    {
+        while (getline(pubkey_file, line))
+        {
+            cout << line << '\n';
+            pubkey += line;
+        }
+        pubkey_file.close();
+    }
+
+    fd = open(myfifo, O_RDWRITE);
+    ssize_t num = write(fd, pubkey, pubkey.length());
+    if (num == -1) {
+        throw std::runtime_error("write() " FILE_LINE)
+    }
 }
 
 int main(int argc, char* argv[])
 {
-    string seed = seed_random_number_gen();
-    generate_key_pair(seed);
+    cout << "Starting token (pubkey) server...\n";
+
+    int fd = -1;
+
+    fd = open_socket();
+
+    try {
+        for (;;) {
+            string seed = seed_random_number_gen();
+            generate_key_pair(seed);
+
+            voter = read_socket(fd);
+            cout << "Handing out token (pubkey) for voter " << voter << '\n';
+            write_socket(fd)
+        }
+    }
+    catch (exception& ex) {
+        cerr << ex.what() << '\n';
+    }
+
+    close_socket(fd);
 
     return 0;
 }
