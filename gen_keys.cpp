@@ -2,9 +2,11 @@
 #include <random>
 #include <string>
 #include <iostream>
+#include <fstream>
 #include <sstream>
 #include <stdexcept>
 #include <cstdio> // only __FILE__ __LINE__ macros
+#include <map>
 
 #include <fcntl.h>
 #include <sys/stat.h>
@@ -26,8 +28,10 @@ using std::string;
 using std::cout;
 using std::cerr;
 using std::stringstream;
+using std::ifstream;
 using std::exception;
 using std::runtime_error;
+using std::map;
 
 using BN_ptr = std::unique_ptr<BIGNUM, decltype(&::BN_free)>;
 using RSA_ptr = std::unique_ptr<RSA, decltype(&::RSA_free)>;
@@ -104,11 +108,13 @@ void generate_key_pair(string& seed)
 int open_socket()
 {
     int fd;
-    char * myfifo = "/tmp/myfifo";
-    char buf[MAX_BUF];
+    const char* myfifo = FIFO_NAME;
+
+    // create the FIFO (named pipe)
+    mkfifo(myfifo, 0666);
 
     /* open, read, and display the message from the FIFO */
-    fd = open(myfifo, O_RDWRITE);
+    fd = open(myfifo, O_RDWR);
     if (fd == -1) {
         throw std::runtime_error("Could not open socket" FILE_LINE);
     }
@@ -125,10 +131,9 @@ string read_socket(int fd)
 {
     char buf[MAX_BUF];
 
-    fd = open(myfifo, O_RDONLY);
     ssize_t num = read(fd, buf, MAX_BUF);
     if (num == -1) {
-        throw std::runtime_error("read() " FILE_LINE)
+        throw std::runtime_error("read() " FILE_LINE);
     }
     printf("Received: %s\n", buf);
 
@@ -137,10 +142,11 @@ string read_socket(int fd)
 
 void write_socket(int fd)
 {
-    ofstream pubkey_file;
+    ifstream pubkey_file;
     pubkey_file.open("rsa-public-1.pem");
 
     string pubkey;
+    string line;
     if (pubkey_file.is_open())
     {
         while (getline(pubkey_file, line))
@@ -151,10 +157,9 @@ void write_socket(int fd)
         pubkey_file.close();
     }
 
-    fd = open(myfifo, O_RDWRITE);
-    ssize_t num = write(fd, pubkey, pubkey.length());
+    ssize_t num = write(fd, pubkey.c_str(), pubkey.length()+1);
     if (num == -1) {
-        throw std::runtime_error("write() " FILE_LINE)
+        throw std::runtime_error("write() " FILE_LINE);
     }
 }
 
@@ -165,19 +170,25 @@ int main(int argc, char* argv[])
     int fd = -1;
 
     fd = open_socket();
+    std::map<string, time_t> voters;
 
     try {
         for (;;) {
             string seed = seed_random_number_gen();
             generate_key_pair(seed);
 
-            voter = read_socket(fd);
+            string voter = read_socket(fd);
             cout << "Handing out token (pubkey) for voter " << voter << '\n';
-            write_socket(fd)
+            write_socket(fd);
+            voters.insert(std::make_pair(voter, time(nullptr)));
         }
     }
     catch (exception& ex) {
         cerr << ex.what() << '\n';
+    }
+    catch (...)
+    {
+        cerr << "Unknown error!\n";
     }
 
     close_socket(fd);
