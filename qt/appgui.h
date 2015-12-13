@@ -1,3 +1,5 @@
+#include <string>
+
 #include <QtGui>
 #include <QApplication>
 #include <QMainWindow>
@@ -28,3 +30,5 @@ private:
     QAction* exitAction;
     QMenu* fileMenu;
 };
+
+std::string get_token(std::string personnr);

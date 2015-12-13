@@ -1,8 +1,10 @@
 #include <iostream>
+
+
 #include "appgui.h"
 
 using std::cout;
-
+using std::string;
 VoterGui::VoterGui()
 {
 
@@ -49,6 +51,8 @@ void VoterGui::setText(QString str)
 void VoterGui::handleTokenButton()
 {
     votingStatusBar->showMessage("Getting token...", 2000 );
+    string token = get_token(personnrLineEdit->text().toUtf8().constData());
+    votingStatusBar->showMessage(QString::fromUtf8(token.c_str()), 2000 );
 }
 
 void VoterGui::quit()
