@@ -10,7 +10,7 @@ int main()
 
     if (curl) {
         const char *data =
-                "{\"jsonrpc\": \"1.0\", \"id\":\"curltest\", \"method\": \"getinfo\", \"params\": [] }";
+                "{\"jsonrpc\": \"1.0\", \"id\":\"curltest\", \"method\": \"help\", \"params\": [] }";
 
         headers = curl_slist_append(headers, "content-type: text/plain;");
         curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
