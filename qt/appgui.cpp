@@ -6,11 +6,17 @@ using std::cout;
 VoterGui::VoterGui()
 {
 
-    mainLayout = new QGridLayout();
+    mainLayout = new QVBoxLayout();
+    QWidget *widget = new QWidget();
+    widget->setLayout(mainLayout);
+    setCentralWidget(widget);
     personnrLineEdit = new QLineEdit();
-    personnrLineEdit->setFocus();
-    personnrLineEdit->setLayout(mainLayout);
-    setCentralWidget(personnrLineEdit);
+    getTokenButton = new QPushButton("Get Token");
+    mainLayout->addWidget(personnrLineEdit);
+    mainLayout->addWidget(getTokenButton);
+    //personnrLineEdit->setFocus();
+    //fgpersonnrLineEdit->setLayout(mainLayout);
+
 
     //openAction = new QAction(tr("&Open"), this);
     //saveAction = new QAction(tr("&Save"), this);
@@ -22,7 +28,7 @@ VoterGui::VoterGui()
     connect(exitAction, SIGNAL(triggered()), qApp, SLOT(quit()));
     connect(personnrLineEdit, SIGNAL(textChanged(QString)),
             this, SLOT(setText(QString)));
-
+    connect(getTokenButton, SIGNAL (released()), this, SLOT(handleTokenButton()));
     fileMenu = menuBar()->addMenu(tr("&File"));
 
     fileMenu->addSeparator();
@@ -32,12 +38,17 @@ VoterGui::VoterGui()
     votingStatusBar = this->statusBar();
 
 
-    setWindowTitle(tr("VoterGui"));
+    setWindowTitle(tr("Val 2018"));
 }
 
 void VoterGui::setText(QString str)
 {
     votingStatusBar->showMessage(str, 2000 );
+}
+
+void VoterGui::handleTokenButton()
+{
+    votingStatusBar->showMessage("Getting token...", 2000 );
 }
 
 void VoterGui::quit()

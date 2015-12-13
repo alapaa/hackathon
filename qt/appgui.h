@@ -1,7 +1,7 @@
 #include <QtGui>
 #include <QApplication>
 #include <QMainWindow>
-#include <QGridLayout>
+#include <QBoxLayout>
 #include <QLineEdit>
 #include <QPushButton>
 #include <QAction>
@@ -18,12 +18,13 @@ class VoterGui : public QMainWindow
 private slots:
     void quit();
     void setText(QString str);
+    void handleTokenButton();
 
 private:
-    QGridLayout* mainLayout;
+    QVBoxLayout* mainLayout;
     QStatusBar* votingStatusBar;
     QLineEdit* personnrLineEdit;
-    QPushButton* quitButton;
+    QPushButton* getTokenButton;
     QAction* exitAction;
     QMenu* fileMenu;
 };
