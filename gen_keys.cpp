@@ -41,19 +41,15 @@ using RSA_ptr = std::unique_ptr<RSA, decltype(&::RSA_free)>;
 using EVP_KEY_ptr = std::unique_ptr<EVP_PKEY, decltype(&::EVP_PKEY_free)>;
 using BIO_FILE_ptr = std::unique_ptr<BIO, decltype(&::BIO_free)>;
 
+enum class TokenStatus {
+    GIVE_TOKEN = 1,
+    DENY_TOKEN = 2
+};
+
 string seed_random_number_gen()
 {
-    const int SEED_SZ = 128;
+    const int SEED_SZ = 32;
     int rc;
-
-    //std::uniform_int_distribution<int> d(0, 9);
-    //stringstream ss;
-
-    //std::random_device rd1; // uses RDRND or /dev/urandom
-
-    // for(int n = 0; n < SEED_SZ; ++n) {
-    //     ss << d(rd1);
-    // }
 
     char buf[SEED_SZ];
     int fd = open("/dev/random", O_RDONLY);
@@ -71,16 +67,10 @@ string seed_random_number_gen()
     buf[n] = '\0';
     cout << "Generated random seed:\n";
     cout << buf << '\n';
-    //string seed = ss.str();
-    //cout << seed << '\n';
-
-    // Seed the openssl RNG
-    //cout << "Seeding SSL RNG from /dev/urandom...\n";
-    //RAND_add(seed.c_str(), seed.length(), seed.length());
 
     rc = RAND_status();
     if (rc != 1)
-        throw std::runtime_error("Open SSL: " FILE_LINE);
+        throw std::runtime_error("Open SSL (RAND_status()): " FILE_LINE);
 
     return string(buf);
 }
@@ -113,8 +103,6 @@ void generate_key_pair(string& seed)
     rc = EVP_PKEY_set1_RSA(pkey.get(), rsa.get());
     if (rc != 1)
         throw std::runtime_error("Open SSL: " FILE_LINE);
-
-    //////////
 
     // Write public key in PKCS PEM
     rc = PEM_write_bio_RSAPublicKey(pem1.get(), rsa.get());
@@ -178,21 +166,27 @@ string read_socket(int fd)
     return string(buf);
 }
 
-void write_socket(int fd)
+void write_socket(int fd, TokenStatus status)
 {
-    ifstream pubkey_file;
-    pubkey_file.open("rsa-public-1.pem");
 
     string pubkey;
-    string line;
-    if (pubkey_file.is_open())
-    {
-        while (getline(pubkey_file, line))
+    if (status == TokenStatus::GIVE_TOKEN) {
+        ifstream pubkey_file;
+        pubkey_file.open("rsa-public-1.pem");
+
+        string line;
+        if (pubkey_file.is_open())
         {
-            cout << line << '\n';
-            pubkey += line;
+            while (getline(pubkey_file, line))
+            {
+                cout << line << '\n';
+                pubkey += line;
+            }
+            pubkey_file.close();
         }
-        pubkey_file.close();
+    }
+    else { // DENY_TOKEN
+        pubkey = "WARNING: TOKEN DENIED, VOTER ALREADY RECEIVED TOKEN!";
     }
 
     ssize_t num = write(fd, pubkey.c_str(), pubkey.length()+1);
@@ -200,6 +194,8 @@ void write_socket(int fd)
         throw std::runtime_error("write() " FILE_LINE);
     }
 }
+
+
 
 int main(int argc, char* argv[])
 {
@@ -221,8 +217,15 @@ int main(int argc, char* argv[])
             }
 
             string voter = read_socket(cli_fd);
-            cout << "Handing out token (pubkey) for voter " << voter << '\n';
-            write_socket(cli_fd);
+            auto it = voters.find(voter);
+            if (it == voters.end()) {
+                cout << "Handing out token (pubkey) for voter " << voter << '\n';
+                write_socket(cli_fd, TokenStatus::GIVE_TOKEN);
+            }
+            else {
+                cout << "DENYING token (pubkey) for voter " << voter << '\n';
+                write_socket(cli_fd, TokenStatus::DENY_TOKEN);
+            }
             voters.insert(std::make_pair(voter, time(nullptr)));
             close(cli_fd);
         }
