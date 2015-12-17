@@ -1,13 +1,15 @@
 TODO:
 
 - Clean up code, e.g. remove naked ptr, use shared_ptr/unique_ptr.
+- Encrypt vote using voter's public key.
+- Use CA signed token server server public key for comms to token server socket.
 - Add map from truncated public RSA keys to struct with:
   * full public RSA key
   * private RSA key
   * Bitcoin Tx id
-- Convert Unix domain listening socket to normal TCP socket
+- Convert Unix domain listening socket to normal TCP socket.
 - Add select() or create new thread/thread pool (server is now sequential,
-  i.e. handling only one client at a time)
+  i.e. handling only one client at a time).
 - Maybe use ECDSA keys from Bitcoin address instead of separate RSA keys.
 - How many bits of entropy is needed in RNG for quality keygen?
 
